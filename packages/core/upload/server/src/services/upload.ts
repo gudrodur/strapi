@@ -551,7 +551,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       await fse.remove(tmpWorkingDirectory);
     }
 
-    return update(id, fileData, { user });
+    return update(id, fileData, { user }, { replaced: true });
   }
 
   type FolderRef = { id: number; name: string } | null;
@@ -582,7 +582,12 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       .findOne({ where: { id: folderId }, select: ['id', 'name'] });
   }
 
-  async function update(id: ID, values: Partial<File>, opts?: CommonOptions) {
+  async function update(
+    id: ID,
+    values: Partial<File>,
+    opts?: CommonOptions,
+    { replaced = false }: { replaced?: boolean } = {}
+  ) {
     const { user } = opts ?? {};
 
     const fileValues = { ...values };
@@ -608,6 +613,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       strapi.eventHub.emit(AUDITED_EVENTS.MEDIA_UPDATE_AUDIT, {
         file: toAuditedFile({ ...res, folder }),
         previous: toAuditedFile(previous),
+        replaced,
       });
     }
 
