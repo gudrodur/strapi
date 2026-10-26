@@ -1,19 +1,20 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import workflowContentTypesFactory from '../workflow-content-types';
 
-const { getAssignedWorkflows } = vi.hoisted(() => ({
+const { getAssignedWorkflows, deleteAllEntitiesStage } = vi.hoisted(() => ({
   getAssignedWorkflows: vi.fn(),
+  deleteAllEntitiesStage: vi.fn(),
 }));
 
 vi.mock('../../utils', () => ({
   getService: vi.fn((name: string) =>
     name === 'workflows'
       ? { _getAssignedWorkflows: getAssignedWorkflows }
-      : { updateEntitiesStage: vi.fn(), deleteAllEntitiesStage: vi.fn() }
+      : { updateEntitiesStage: vi.fn(), deleteAllEntitiesStage }
   ),
 }));
 
-const createStrapiMock = () => {
+const createStrapiMock = ({ registeredUIDs = ['api::a.a', 'api::b.b', 'api::c.c'] } = {}) => {
   const update = vi.fn(async ({ where, data }: any) => ({
     id: where.id,
     name: 'Other',
@@ -21,7 +22,10 @@ const createStrapiMock = () => {
   }));
 
   return {
-    db: { query: vi.fn(() => ({ update })) },
+    db: {
+      query: vi.fn(() => ({ update })),
+      metadata: { has: vi.fn((uid: string) => registeredUIDs.includes(uid)) },
+    },
     plugin: vi.fn(() => ({
       service: vi.fn(() => ({
         findConfiguration: vi.fn().mockResolvedValue({ options: {} }),
@@ -67,5 +71,19 @@ describe('review-workflows workflow content types service', () => {
     await expect(
       service.migrate({ srcContentTypes: [], destContentTypes: ['api::a.a'], stageId: 10 })
     ).resolves.toEqual([]);
+  });
+
+  test('migrate skips the stage cleanup of a content type that no longer exists', async () => {
+    const service = workflowContentTypesFactory({ strapi: createStrapiMock() as any });
+
+    await expect(
+      service.migrate({
+        srcContentTypes: ['api::a.a', 'api::missing.missing'],
+        destContentTypes: [],
+      })
+    ).resolves.toEqual([]);
+
+    expect(deleteAllEntitiesStage).toHaveBeenCalledTimes(1);
+    expect(deleteAllEntitiesStage).toHaveBeenCalledWith('api::a.a', {});
   });
 });
